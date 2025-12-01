@@ -2,23 +2,26 @@
 
 (require "model.rkt" "ring_buffer.rkt")
 
-(define (verify-ring-buffer make-trace semantics)
+(define (verify-ring-buffer make-trace read-count semantics)
   ;; Clear state
   (current-bitwidth #f) ;; Use infinite precision for integers
   
   ;; 1. Create symbolic values for reads
-  (define-symbolic* r_tail_val integer?)
-  (define-symbolic* r_data_val integer?)
+  (define read-vals
+    (for/list ([i read-count])
+      (define-symbolic* rv integer?)
+      rv))
   
-  (define trace (make-trace r_tail_val r_data_val))
+  (define trace (make-trace read-vals))
   ;; Select program order relation based on semantics
   (define ppo-fn (if (equal? semantics 'sc) ppo-sc ppo-relaxed))
   
   ;; Initial writes
   (define init-writes 
-    (list (mk-write -1 -1 DATA 0)
-          (mk-write -2 -1 TAIL 0)
-          (mk-write -3 -1 HEAD 0)))
+    (list (mk-write -1 -1 DATA0 0)
+          (mk-write -2 -1 DATA1 0)
+          (mk-write -3 -1 TAIL 0)
+          (mk-write -4 -1 HEAD 0)))
           
   (define full-trace (append init-writes trace))
   
@@ -87,36 +90,49 @@
          (equal? (event-addr w1) (event-addr w2))
          (< (get-co-rank w1) (get-co-rank w2))))
 
-  ;; Fence-based visibility: if consumer reads tail from the post-fence tail write,
-  ;; it must also read data from the pre-fence data write (models release).
-  (define maybe-fence-constraint
-    (let* ([tail-read (list-ref reads 0)]
-           [data-read (list-ref reads 1)]
-           [w-tail   (findf (lambda (e) (and (equal? (event-type e) 'rdma-write)
-                                             (equal? (event-addr e) TAIL)))
-                            writes)]
-           [w-data   (findf (lambda (e) (and (equal? (event-type e) 'rdma-write)
-                                             (equal? (event-addr e) DATA)))
-                            writes)]
-           [has-fence? (member (findf (lambda (e) (equal? (event-type e) 'fence)) trace) trace)])
-      (cond
-        ;; SC: strong ordering, reading tail=1 must imply seeing data=1.
-        [(equal? semantics 'sc)
-         (implies (equal? r_tail_val 1)
-                  (equal? r_data_val 1))]
-        ;; Relaxed: only if fenced do we get the release-like guarantee.
-        [(and w-tail w-data has-fence?)
-         (and (implies (rf-rel w-tail tail-read)
-                       (rf-rel w-data data-read))
-              (implies (equal? r_tail_val 1)
-                       (equal? r_data_val 1)))]
-        [else #t])))
-
-  ;; Debug: Implement acyclic locally to expose ranks
+  ;; Ranks for combined relation (used for acyclicity and visibility checks)
   (define ranks (for/list ([e full-trace]) (define-symbolic* r integer?) r))
-  
   (define (get-rank e) (list-ref ranks (index-of full-trace e)))
-  
+
+  ;; Latest-visible constraint: a read cannot select an older write if a later
+  ;; co-write appears earlier in the execution (by rank). Approximates "read most recent visible".
+  (define latest-visible-constraint
+    (for/and ([r reads] [w writes])
+      (implies (rf-rel w r)
+               (for/and ([w2 writes])
+                 (implies (and (equal? (event-addr w2) (event-addr w))
+                               (co-rel w w2)
+                               (< (get-rank w2) (get-rank r)))
+                          #f)))))
+
+  ;; Release-acquire style: if a read observes a write w_rel, then any producer
+  ;; write w_pre that is ppo-before w_rel must become visible to subsequent reads
+  ;; of the same address in the reading thread.
+  (define release-acquire-constraint
+    (for/and ([r_acq reads] [w_rel writes])
+      (implies (rf-rel w_rel r_acq)
+               (for/and ([w_pre writes])
+                 (implies (and (equal? (event-thread-id w_pre) (event-thread-id w_rel))
+                               (ppo-fn full-trace w_pre w_rel))
+                          (for/and ([r_use reads])
+                            (implies (and (ppo-fn full-trace r_acq r_use)
+                                          (equal? (event-addr r_use) (event-addr w_pre)))
+                                     (and (< (get-rank w_pre) (get-rank r_use))
+                                          (for/and ([w_src writes])
+                                            (implies (rf-rel w_src r_use)
+                                                     (not (co-rel w_src w_pre))))))))))))
+
+  ;; Derived happens-before: if r_acq reads from w_rel, then anything ppo-before w_rel
+  ;; must happen before anything ppo-after r_acq.
+  (define derived-hb-constraint
+    (for/and ([r_acq reads] [w_rel writes])
+      (implies (rf-rel w_rel r_acq)
+               (for/and ([w_pre writes])
+                 (implies (ppo-fn full-trace w_pre w_rel)
+                          (for/and ([e_post full-trace])
+                            (implies (ppo-fn full-trace r_acq e_post)
+                                     (< (get-rank w_pre) (get-rank e_post)))))))))
+
   (define acyclic-constraints
     (for/and ([e1 full-trace] [e2 full-trace])
       (let ([rel (or (ppo-fn full-trace e1 e2)
@@ -128,28 +144,29 @@
   (define model-constraints (and (well-formed-rf full-trace rf-rel)
                                  (well-formed-co full-trace co-rel)
                                  acyclic-constraints
-                                 maybe-fence-constraint))
+                                 latest-visible-constraint
+                                 release-acquire-constraint
+                                 derived-hb-constraint))
 
   ;; Debug: check baseline consistency without the violation predicate.
   (define base-sol (solve (assert (and rf-constraints co-constraints model-constraints))))
   (printf "Baseline constraints SAT? ~a\n" (sat? base-sol))
   (when (sat? base-sol)
     (printf "Base rf choices matrix: ~a\n" (evaluate rf-matrix base-sol))
-    (printf "Base read values tail/data: ~a / ~a\n"
-            (evaluate r_tail_val base-sol)
-            (evaluate r_data_val base-sol)))
+    (printf "Base read values: ~a\n"
+            (evaluate read-vals base-sol)))
 
+  ;; Violation: if consumer sees tail>=k, corresponding data_k should match.
+  (define (stale? idx tail-expected data-expected)
+    (and (>= (list-ref read-vals idx) tail-expected)
+         (not (equal? (list-ref read-vals (add1 idx)) data-expected))))
+  ;; We expect two rounds: tail/data pairs at indices 0/1 and 2/3.
   (define violation
-    (and (equal? r_tail_val 1)
-         (not (equal? r_data_val 1))))
+    (or (stale? 0 1 1)
+        (stale? 2 2 2)))
 
   ;; Debug: force the intuitive source choices (tail from post-fence write, data from init)
-  (define debug-sol
-    (solve
-     (assert (and rf-constraints co-constraints model-constraints violation
-                  (rf-rel (list-ref writes 4) (list-ref reads 0))
-                  (rf-rel (list-ref writes 0) (list-ref reads 1))))))
-  (printf "Debug (fixed rf choices) SAT? ~a\n" (sat? debug-sol))
+  (printf "Debug (fixed rf choices) skipped in generalized model.\n")
 
   (define sol (solve (assert (and rf-constraints co-constraints model-constraints violation))))
   
@@ -159,23 +176,25 @@
         (printf "Model found. Ranks:\n")
         (for ([e full-trace] [r ranks])
           (printf "Event ~a (Type ~a): Rank ~a\n" (event-id e) (event-type e) (evaluate r sol)))
-        (printf "r_tail_val: ~a\n" (evaluate r_tail_val sol))
-        (printf "r_data_val: ~a\n" (evaluate r_data_val sol))
+        (printf "Read values: ~a\n" (evaluate read-vals sol))
         (printf "RF matrix (resolved): ~a\n" (evaluate rf-matrix sol))
         (printf "rf-constraints satisfied? ~a\n" (evaluate rf-constraints sol))
+        (printf "latest-visible? ~a\n" (evaluate latest-visible-constraint sol))
+        (printf "release-acquire? ~a\n" (evaluate release-acquire-constraint sol))
+        (printf "derived-hb? ~a\n" (evaluate derived-hb-constraint sol))
         sol)))
 
 (define (run-case semantics)
   (printf "\n=== Semantics: ~a ===\n" semantics)
   (printf "Verifying P1 (Correct)...\n")
-  (define sol-p1 (verify-ring-buffer make-trace-p1 semantics))
+  (define sol-p1 (verify-ring-buffer make-trace-p1 4 semantics))
   (if (unsat? sol-p1)
       (printf "P1 Verified! No violation found.\n")
       (begin
         (printf "P1 Failed! Counterexample found.\n")
         (print sol-p1)))
   (printf "\nVerifying P2 (Incorrect)...\n")
-  (define sol-p2 (verify-ring-buffer make-trace-p2 semantics))
+  (define sol-p2 (verify-ring-buffer make-trace-p2 4 semantics))
   (if (unsat? sol-p2)
       (printf "P2 Verified! No violation found.\n")
       (begin
