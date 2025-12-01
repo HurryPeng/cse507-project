@@ -1,0 +1,277 @@
+%%
+%% This is file `sample-manuscript.tex',
+%% generated with the docstrip utility.
+%%
+%% The original source files were:
+%%
+%% samples.dtx  (with options: `all,proceedings,bibtex,manuscript')
+%% 
+%% IMPORTANT NOTICE:
+%% 
+%% For the copyright see the source file.
+%% 
+%% Any modified versions of this file must be renamed
+%% with new filenames distinct from sample-manuscript.tex.
+%% 
+%% For distribution of the original source see the terms
+%% for copying and modification in the file samples.dtx.
+%% 
+%% This generated file may be distributed as long as the
+%% original source files, as listed above, are part of the
+%% same distribution. (The sources need not necessarily be
+%% in the same archive or directory.)
+%%
+%%
+%% Commands for TeXCount
+%TC:macro \cite [option:text,text]
+%TC:macro \citep [option:text,text]
+%TC:macro \citet [option:text,text]
+%TC:envir table 0 1
+%TC:envir table* 0 1
+%TC:envir tabular [ignore] word
+%TC:envir displaymath 0 word
+%TC:envir math 0 word
+%TC:envir comment 0 0
+%%
+%% The first command in your LaTeX source must be the \documentclass
+%% command.
+%%
+%% For submission and review of your manuscript please change the
+%% command to \documentclass[manuscript, screen, review]{acmart}.
+%%
+%% When submitting camera ready or to TAPS, please change the command
+%% to \documentclass[sigconf]{acmart} or whichever template is required
+%% for your publication.
+%%
+%%
+\documentclass[acmsmall,screen,review,nonacm]{acmart}
+%%
+%% \BibTeX command to typeset BibTeX logo in the docs
+\AtBeginDocument{%
+  \providecommand\BibTeX{{%
+    Bib\TeX}}}
+
+%% Rights management information.  This information is sent to you
+%% when you complete the rights form.  These commands have SAMPLE
+%% values in them; it is your responsibility as an author to replace
+%% the commands and values with those provided to you when you
+%% complete the rights form.
+\setcopyright{acmlicensed}
+\copyrightyear{2018}
+\acmYear{2018}
+\acmDOI{XXXXXXX.XXXXXXX}
+%% These commands are for a PROCEEDINGS abstract or paper.
+\acmConference[Conference acronym 'XX]{Make sure to enter the correct
+  conference title from your rights confirmation email}{June 03--05,
+  2018}{Woodstock, NY}
+%%
+%%  Uncomment \acmBooktitle if the title of the proceedings is different
+%%  from ``Proceedings of ...''!
+%%
+%%\acmBooktitle{Woodstock '18: ACM Symposium on Neural Gaze Detection,
+%%  June 03--05, 2018, Woodstock, NY}
+\acmISBN{978-1-4503-XXXX-X/2018/06}
+
+
+%%
+%% end of the preamble, start of the body of the document source.
+\begin{document}
+
+%%
+%% The "title" command has an optional parameter,
+%% allowing the author to define a "short title" to be used in page headers.
+\title{Solver-Aided Verification of an RDMA-based Distributed Ring Buffer}
+
+%%
+%% The "author" command and its associated commands are used to define
+%% the authors and their affiliations.
+%% Of note is the shared affiliation of the first two authors, and the
+%% "authornote" and "authornotemark" commands
+%% used to denote shared contribution to the research.
+\author{Hongtao Zhang}
+\email{hongtaoz@cs.washington.edu}
+\author{Yuki Yang}
+\email{yukyang@cs.washington.edu}
+\author{Haoran Peng}
+\email{hrpeng@cs.washington.edu}
+\author{Chenxingyu Zhao}
+\email{cxyzhao@cs.washington.edu}
+\affiliation{%
+  \institution{Paul G. Allen School of Computer Science and Engineering}
+  \city{Seattle}
+  \country{USA}
+}
+
+%%
+%% By default, the full list of authors will be used in the page
+%% headers. Often, this list is too long, and will overlap
+%% other information printed in the page headers. This command allows
+%% the author to define a more concise list
+%% of authors' names for this purpose.
+\renewcommand{\shortauthors}{Zhang et al.}
+
+%%
+%% The abstract is a short summary of the work to be presented in the
+%% article.
+\begin{abstract}
+  Remote Direct Memory Access (RDMA) enables high-performance systems to access remote memory with low latency and minimal CPU intervention. However, RDMA introduces relaxed memory semantics: remote reads and writes can appear out of order, and completion events do not necessarily guarantee global visibility. This makes it difficult for developers to reason about the correctness of concurrent RDMA programs, especially when synchronization primitives (fences, atomic) are used to enforce consistency.
+
+  We propose to build a solver-aided verification framework using Rosette that models the semantics of both \textit{Sequential Consistency (SC)} and \textit{Relaxed} RDMA memory models, enabling automatic reasoning about whether a given synchronization scheme guarantees correctness. Specifically, we aim to verify the implementation of a ring buffer, a common data structure used in streaming-based communication between two hosts via RDMA. By constructing two textually similar ring buffer implementations--one of which correctly synchronizes under both SC and RDMA, while the other fails under the relaxed model--we aim to demonstrate how solver-aided reasoning exposes subtle concurrency bugs that human developers might overlook.
+\end{abstract}
+
+
+%%
+%% This command processes the author and affiliation and title
+%% information and builds the first part of the formatted document.
+\maketitle
+
+\section{Goals}
+
+\subsection{Problem}
+% Describe the core technical or research problem here.
+Remote Direct Memory Access (RDMA) is a high-performance networking technology that allows one host to directly access another host’s memory with microsecond-level latency, bypassing both the remote CPU and operating system kernel. Consider a scenario where one wants a distributed shared-memory model across multiple hosts, with different hosts communicating via RDMA. However, the latency of accessing remote memory is much slower than local memory (a few microseconds for remote memory and less than one microsecond for local memory). Providing sequential consistency under such conditions is costly, as each RDMA \texttt{READ}/\texttt{WRITE} typically takes 1–2 µs to complete. This motivates adopting \textit{weaker memory semantics} that allow issuing concurrent requests before synchronization.
+% Furthermore, even though hardware does provide some amount of ordering guarantee within one connection (Queue Pair), this comes with performance constraints. Our recent works (not published) can achieve 4 times more message rate (170Mpps) when we are operating in multiple QPs compared to a single QP (35Mpps). Such massive differences in performance motivate programming with weaker memory semantics. Thus, a weaker memory model is necessary for a practical distributed shared memory system. For example, OpenSHMEM guarantees neither visibility nor ordering without explicit synchronization primitives (barrier, fence, quiet, etc.) \cite{chapman2010openshmem}.
+
+Weaker memory semantics make it challenging to ensure that synchronization mechanisms (e.g., fences, flushes, atomics) correctly prevent issues such as stale reads or out-of-order updates, especially when interacting with heterogeneous CPU architectures like x86 and ARM.
+Developers often program in a Sequential Consistency (SC) mindset, with whose assumption the programs might fail under a relaxed semantics. There currently exists no lightweight tool that automatically checks whether an implementation’s use of synchronization is sufficient to maintain correctness.
+
+\textbf{Core Problem}: The absence of automated tools to verify whether the synchronization logic (e.g., fences) in an RDMA-based implementation is adequate to prevent correctness violations under relaxed memory ordering. Specifically, we focus on an RDMA-based ring buffer implementation.
+
+\subsubsection{What would solving this problem enable?}
+% Explain the broader impact or capability that your solution unlocks.
+
+A solver-aided verifier for RDMA synchronization would allow developers to automatically detect insufficient fencing or ordering constraints in their programs. Such a tool would make it possible to:
+
+\begin{itemize}
+   
+\item Formally verify that a ring buffer and other RDMA-based data structures remain correct under realistic relaxed semantics.
+
+\item Generate concrete counterexamples illustrating subtle violations.
+
+\item Improve developers' understanding of RDMA memory models and synchronization needs.
+\end{itemize}
+
+In short, it would enable automated reasoning about correctness under weak memory models for high-performance systems. 
+
+\subsubsection{What makes the problem challenging?}
+% Discuss key challenges, such as scalability, performance bottlenecks, or system design complexity.
+
+
+\begin{itemize}
+    
+\item RDMA semantics are weaker and more complex than traditional shared-memory models. Remote writes and reads may become visible out of order.
+
+\item Fences and flushes exhibit subtle semantics that vary across different network hardware and memory models (e.g., x86 TSO).
+
+\item Correctness depends on both local and remote synchronization events.
+Modeling these behaviors precisely and encoding them in a solver-friendly way is nontrivial.
+Furthermore, the search space of concurrent executions grows combinatorially, requiring careful bounding to make verification feasible. 
+\end{itemize}
+
+
+\subsection{Related Work}
+\subsubsection{What is the status quo and why is it not enough?}
+% Summarize current systems or methods and their limitations.
+
+Existing RDMA verification efforts \cite{dan2016modeling, ambal2024semantics, ambal2025verified} have formalized semantics or verified specific systems, but there is no accessible, automatic verifier for developers to check the sufficiency of synchronization logic in their own RDMA programs. Programmers still rely on testing or informal reasoning, which fail to explore rare but legal executions permitted by relaxed ordering.  Moreover, prior work often assumes a sequentially consistent memory model or a single thread per node, oversimplifying multithreaded concurrency.
+
+\subsubsection{What is the related work?}
+% Briefly describe previous papers or open-source solutions.
+
+\begin{itemize}
+% \item Dan et al., “Modeling the Wild: Formalizing RMA Semantics” (OSDI 2016) formalized axiomatic RMA semantics and used constraint solving to reveal inconsistencies between informal assumptions and actual model behavior. \cite{dan2016modeling}
+
+% \item Ambal et al., “Semantics and Verification of RDMA Persistent Memory” (ASPLOS 2024) and “Verified RDMA” (POPL 2025): verified RDMA-based persistent memory systems combining formal semantics and theorem proving. \cite{ambal2025verified}
+
+% \item Bornholt \& Torlak, “MemSynth” (PLDI 2017): developed a Rosette-based framework for reasoning about memory models and synthesizing litmus tests. \cite{emina2017synthesize}
+\item  Dan et al.~\cite{dan2016modeling} propose the coreRMA language to formalize the characteristics of Remote Memory Access (RMA) programming and develop a complete axiomatic semantics for it. Furthermore, they integrate the semantics with an existing constraint solver, enabling exhaustive generation of coreRMA programs.
+\item  Ambal et al.~\cite{ambal2024semantics} present the formal semantics for RDMA operations in the context of multicore systems following the x86 Total Store Order (TSO) memory model. The semantics precisely integrate local CPU memory operations with remote RDMA reads, writes, atomics, and fences, revealing subtle concurrency behaviors that arise when combining host and network memory effects.
+\item Ambal et al.~\cite{ambal2025verified} introduces LOCO, a formally verified library of composable objects for multi-node systems over RDMA, aiming to bridge the gap between shared memory programming and distributed memory models. To support verification, they develop a modular declarative verification framework to model multinode objects.
+\end{itemize}
+
+
+\subsubsection{How does your work differ?}
+% Highlight novelty and unique aspects of your approach.
+
+Our project targets a lightweight, solver-aided prototype that developers can use directly to reason about RDMA synchronization. Specifically, we focus on a widely used data structure: a ring buffer under both SC and relaxed RDMA semantics. We aim to demonstrate that solver-aided reasoning (in Rosette) can automatically:
+
+\begin{itemize}
+   
+\item Check correctness properties for small bounded programs.
+
+\item Identify insufficient synchronization patterns.
+
+\item Generate concrete counterexamples (litmus-style traces).
+This bridges the gap between oversimplified formalization and practical verification tooling.
+\end{itemize}
+
+\section{Solution}
+
+\subsection{Design}
+\subsubsection{What is the key idea?}
+% Explain the central design concept or hypothesis.
+
+We will encode both SC and relaxed RDMA memory models axiomatically within Rosette.
+Two implementations of a concurrent ring buffer with subtle textual differences will be modeled as sequences of memory events:
+\begin{itemize}
+  
+\item P1: correctly synchronized; should satisfy both SC and RDMA semantics.
+
+\item P2: missing or weakened synchronization; correct under SC but incorrect under RDMA.
+ 
+\end{itemize}
+
+By encoding the relations—program order (po), reads-from (rf), coherence (co), and synchronization—we can symbolically search for executions that violate correctness.
+If Rosette finds a violating execution for P2 but not for P1, the tool has successfully verified the sufficiency of synchronization.
+
+\subsubsection{Why do you think it will work?}
+% Justify your reasoning—draw on theory, intuition, or preliminary evidence.
+
+Rosette is designed for symbolic reasoning over bounded program semantics. With Rosette, we can encode axiomatic memory models and exhaustively search for valid/invalid executions. Given that our planned programs are small and bounded (two threads, a few operations), the solver could potentially explore all possible behaviors efficiently. The expected outcome is an observed phenomenon from prior RMA studies, upon which we are able to sanity-check our results.
+
+coreRMA~\cite{dan2016modeling} demonstrates a pipeline of modeling RDMA semantics with a DSL, building axioms about the DSL and transforming that into solver-based queries for finding counterexample programs. Our work will follow a similar workflow, as demonstrated by prior work. Notably, we plan to extend coreRMA, which assumes only a sequentially consistent memory model, to accurately model the relaxed memory semantics in our scenario.
+
+% \subsection{Evaluation}
+% \subsubsection{What are the metrics?}
+% % Define metrics such as throughput, latency, scalability, etc.
+
+
+
+% \subsubsection{What are the baselines?}
+% % List baseline systems or methods for comparison.
+
+
+
+% \subsubsection{What are the workloads?}
+% % Describe workloads, benchmarks, or datasets used in experiments.
+
+
+\section{What results do you expect to see?}
+% Summarize hypotheses or expected performance trends.
+We expect the solver to verify that P1 satisfies correctness properties (no stale reads, proper order) under both SC and Relaxed ordering, while P2 fails under relaxed ordering.
+The solver should produce a concrete counterexample trace showing the violating execution for P2, demonstrating that the missing synchronization causes relaxed-order visibility errors.
+We also expect the verification to complete quickly for small bounded instances (seconds to minutes), confirming Rosette’s viability for this reasoning task.
+
+\section{Timeline}
+\begin{itemize}
+    \item Week 1 (Oct 29 – Nov 4)	Study RMA/RDMA semantics and identify axioms to encode. Draft P1/P2 skeletons and correctness properties.
+    \item Week 2 (Nov 5 – Nov 11)	Implement SC semantics encoding in Rosette; test on simple litmus programs.
+    \item Week 3 (Nov 12 – Nov 18)	Extend encoding to relaxed RMA semantics; integrate ring buffer P1/P2 models.
+    \item Week 4 (Nov 19 – Nov 25)	Run solver to verify P1/P2; obtain counterexamples; create visualization of execution traces.
+    \item Week 5 (Nov 26 – Dec 2)	Write final report and demo slides; polish prototype and README.
+    \item Dec 5	Submit code + report.
+    \item Dec 9	Live demo.
+\end{itemize}
+
+% This project aims to develop a solver-aided verifier for RDMA synchronization correctness using Rosette. By modeling a ring buffer under both sequential and relaxed semantics, we address the real-world gap: the lack of a tool to automatically verify that synchronization logic in RDMA-based programs is sufficient to prevent correctness violations under relaxed memory ordering. Our prototype will demonstrate how solver-aided reasoning can expose subtle concurrency bugs and strengthen developer confidence in RDMA applications.
+%%
+%% The next two lines define the bibliography style to be used, and
+%% the bibliography file.
+% \bibliographystyle{ACM-Reference-Format}
+\bibliographystyle{unsrt}
+\bibliography{reference}
+
+\end{document}
+\endinput
+%%
+%% End of file `sample-manuscript.tex'.

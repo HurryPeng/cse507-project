@@ -103,7 +103,7 @@
 (define (is-fence? e)
   (equal? (event-type e) 'fence))
 
-(define (ppo trace e1 e2)
+(define (ppo-relaxed trace e1 e2)
   (and (po trace e1 e2)
        (or
         ;; Strong local ordering (SC for local ops)
@@ -117,6 +117,10 @@
                        (po trace e1 f)
                        (po trace f e2)))
                 trace))))
+
+;; SC Program Order: everything is ordered by program order.
+(define (ppo-sc trace e1 e2)
+  (po trace e1 e2))
 
 ;; Consistency Axiom
 ;; acyclic(ppo | rf | co | fr)
@@ -144,7 +148,7 @@
   (define fr-rel (lambda (x y) (fr trace rf co x y)))
   (define rf-rel (lambda (x y) (rf x y))) ;; rf is already a function/relation
   (define co-rel (lambda (x y) (co x y)))
-  (define ppo-rel (lambda (x y) (ppo trace x y)))
+  (define ppo-rel (lambda (x y) (ppo-relaxed trace x y)))
 
   (define combined-rel
     (union ppo-rel
@@ -154,6 +158,4 @@
   (and (well-formed-rf trace rf)
        (well-formed-co trace co)
        (acyclic? combined-rel trace)))
-
-
 

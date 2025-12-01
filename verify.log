@@ -1,43 +1,60 @@
+
+=== Semantics: sc ===
 Verifying P1 (Correct)...
 Reads: (#(struct:event 4 2 read 1 r_tail_val$0) #(struct:event 6 2 read 0 r_data_val$1))
 Writes: (#(struct:event -1 -1 write 0 0) #(struct:event -2 -1 write 1 0) #(struct:event -3 -1 write 2 0) #(struct:event 1 1 rdma-write 0 1) #(struct:event 3 1 rdma-write 1 1) #(struct:event 8 2 write 2 1))
-Trace Length: 11
-W_data_1: #(struct:event 1 1 rdma-write 0 1)
-Fence_1: #(struct:event 2 1 fence #f #f)
-W_tail_1: #(struct:event 3 1 rdma-write 1 1)
-is-fence?(Fence_1): #t
-po(W_data_1, Fence_1): #t
-po(Fence_1, W_tail_1): #t
-PPO(W_data_1, W_tail_1): #t
-Model found. Ranks:
-Event -1 (Type write): Rank r$10
-Event -2 (Type write): Rank r$11
-Event -3 (Type write): Rank r$12
-Event 1 (Type rdma-write): Rank r$13
-Event 2 (Type fence): Rank r$14
-Event 3 (Type rdma-write): Rank r$15
-Event 4 (Type read): Rank r$16
-Event 5 (Type fence): Rank r$17
-Event 6 (Type read): Rank r$18
-Event 7 (Type fence): Rank r$19
-Event 8 (Type write): Rank r$20
-P1 Failed! Counterexample found.
-(model
- [r_tail_val$0 1]
- [r_data_val$1 0]
- [idx$2 0]
- [idx$3 0])
+Baseline constraints SAT? #t
+Base rf choices matrix: ((b$2 b$3 b$4 b$5 b$6 b$7) (#f #f #f #f #t #f))
+Base read values tail/data: 1 / 1
+Debug (fixed rf choices) SAT? #f
+P1 Verified! No violation found.
+
 Verifying P2 (Incorrect)...
-Reads: (#(struct:event 3 2 read 1 r_tail_val$21) #(struct:event 4 2 read 0 r_data_val$22))
+Reads: (#(struct:event 3 2 read 1 r_tail_val$31) #(struct:event 4 2 read 0 r_data_val$32))
 Writes: (#(struct:event -1 -1 write 0 0) #(struct:event -2 -1 write 1 0) #(struct:event -3 -1 write 2 0) #(struct:event 1 1 rdma-write 0 1) #(struct:event 2 1 rdma-write 1 1) #(struct:event 5 2 write 2 1))
-Trace Length: 8
+Baseline constraints SAT? #t
+Base rf choices matrix: ((b$33 b$34 b$35 b$36 b$37 b$38) (#f #f #f #f #t #f))
+Base read values tail/data: 1 / 1
+Debug (fixed rf choices) SAT? #f
+P2 Verified! No violation found.
+
+=== Semantics: relaxed ===
+Verifying P1 (Correct)...
+Reads: (#(struct:event 4 2 read 1 r_tail_val$59) #(struct:event 6 2 read 0 r_data_val$60))
+Writes: (#(struct:event -1 -1 write 0 0) #(struct:event -2 -1 write 1 0) #(struct:event -3 -1 write 2 0) #(struct:event 1 1 rdma-write 0 1) #(struct:event 3 1 rdma-write 1 1) #(struct:event 8 2 write 2 1))
+Baseline constraints SAT? #t
+Base rf choices matrix: ((b$61 b$62 b$63 b$64 #f b$66) (#f #f #t #f #f #f))
+Base read values tail/data: 2 / 0
+Debug (fixed rf choices) SAT? #f
+P1 Verified! No violation found.
+
+Verifying P2 (Incorrect)...
+Reads: (#(struct:event 3 2 read 1 r_tail_val$90) #(struct:event 4 2 read 0 r_data_val$91))
+Writes: (#(struct:event -1 -1 write 0 0) #(struct:event -2 -1 write 1 0) #(struct:event -3 -1 write 2 0) #(struct:event 1 1 rdma-write 0 1) #(struct:event 2 1 rdma-write 1 1) #(struct:event 5 2 write 2 1))
+Baseline constraints SAT? #t
+Base rf choices matrix: ((b$92 b$93 b$94 b$95 b$96 b$97) (#f #f #f #f #t #f))
+Base read values tail/data: r_tail_val$90 / 1
+Debug (fixed rf choices) SAT? #t
 Model found. Ranks:
-Event -1 (Type write): Rank r$31
-Event -2 (Type write): Rank r$32
-Event -3 (Type write): Rank r$33
-Event 1 (Type rdma-write): Rank r$34
-Event 2 (Type rdma-write): Rank r$35
-Event 3 (Type read): Rank r$36
-Event 4 (Type read): Rank r$37
-Event 5 (Type write): Rank r$38
-P2 Failed! Counterexample found (Expected).
+Event -1 (Type write): Rank r$110
+Event -2 (Type write): Rank r$111
+Event -3 (Type write): Rank r$112
+Event 1 (Type rdma-write): Rank r$113
+Event 2 (Type rdma-write): Rank r$114
+Event 3 (Type read): Rank r$115
+Event 4 (Type read): Rank r$116
+Event 5 (Type write): Rank r$117
+r_tail_val: 1
+r_data_val: 0
+RF matrix (resolved): ((b$92 b$93 b$94 b$95 b$96 b$97) (#f #f #t #f #f #f))
+rf-constraints satisfied? #t
+P2 Failed! Counterexample found.
+(model
+ [r_tail_val$90 1]
+ [r_data_val$91 0]
+ [b$98 #f]
+ [b$99 #f]
+ [b$100 #t]
+ [b$101 #f]
+ [b$102 #f]
+ [b$103 #f])
