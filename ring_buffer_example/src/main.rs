@@ -1,11 +1,14 @@
 mod ring_buffer;
+mod ring_buffer_seq;
 use ring_buffer::RingBuf;
+use ring_buffer_seq::RingBufSeq;
 use std::thread;
 use std::time::Instant;
 
 fn main() {
     // 1MB buffer (131072 * 8 bytes = 1MB)
     let count = 131072;
+    // let ring = RingBufSeq::new(count);
     let ring = RingBuf::new(count);
 
     let total_bytes = 1024 * 1024 * 64; // 1GB
