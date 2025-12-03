@@ -4,16 +4,17 @@
 (require racket/list)
 
 
-;; Events
-(struct event (id thread-id type addr val) #:transparent)
+;; Events (qp optional, mainly for RDMA ops)
+(struct event (id thread-id type addr val qp) #:transparent)
 
 ;; Event types are just symbols: 'read, 'write, 'fence
 
 
 ;; Helper to create events
-(define (mk-read id tid addr val) (event id tid 'read addr val))
-(define (mk-write id tid addr val) (event id tid 'write addr val))
-(define (mk-fence id tid) (event id tid 'fence #f #f))
+(define (mk-read id tid addr val) (event id tid 'read addr val #f))
+(define (mk-write id tid addr val) (event id tid 'write addr val #f))
+(define (mk-fence id tid) (event id tid 'fence #f #f #f))
+(define (mk-flush id tid qp) (event id tid 'flush #f #f qp))
 
 ;; Execution trace: a list of events
 ;; We will assume a fixed number of events for bounded verification.
@@ -87,8 +88,8 @@
 ;; RDMA Events are symbols: 'rdma-write, 'rdma-read
 
 
-;; Helper for RDMA
-(define (mk-rdma-write id tid addr val) (event id tid 'rdma-write addr val))
+;; Helper for RDMA with qp label
+(define (mk-rdma-write id tid addr val qp) (event id tid 'rdma-write addr val qp))
 
 ;; Relaxed Program Order (ppo)
 ;; ppo includes:
@@ -103,20 +104,22 @@
 (define (is-fence? e)
   (equal? (event-type e) 'fence))
 
-(define (ppo trace e1 e2)
+(define (same-qp? e1 e2)
+  (and (member (event-type e1) '(rdma-write flush))
+       (member (event-type e2) '(rdma-write flush))
+       (equal? (event-qp e1) (event-qp e2))))
+
+(define (ppo-relaxed trace e1 e2)
   (and (po trace e1 e2)
        (or
         ;; Strong local ordering (SC for local ops)
         (and (is-local? e1) (is-local? e2))
-        ;; Fence ordering
-        (is-fence? e1)
-        (is-fence? e2)
-        ;; If there is a fence between them in PO
-        (ormap (lambda (f)
-                  (and (is-fence? f)
-                       (po trace e1 f)
-                       (po trace f e2)))
-                trace))))
+        ;; RDMA writes on the same QP are ordered
+        (same-qp? e1 e2))))
+
+;; SC Program Order: everything is ordered by program order.
+(define (ppo-sc trace e1 e2)
+  (po trace e1 e2))
 
 ;; Consistency Axiom
 ;; acyclic(ppo | rf | co | fr)
@@ -144,7 +147,7 @@
   (define fr-rel (lambda (x y) (fr trace rf co x y)))
   (define rf-rel (lambda (x y) (rf x y))) ;; rf is already a function/relation
   (define co-rel (lambda (x y) (co x y)))
-  (define ppo-rel (lambda (x y) (ppo trace x y)))
+  (define ppo-rel (lambda (x y) (ppo-relaxed trace x y)))
 
   (define combined-rel
     (union ppo-rel
@@ -154,6 +157,3 @@
   (and (well-formed-rf trace rf)
        (well-formed-co trace co)
        (acyclic? combined-rel trace)))
-
-
-
