@@ -11,16 +11,24 @@ fn main() {
     // let ring = RingBufSeq::new(count);
     let ring = RingBuf::new(count);
 
-    let total_bytes = 1024 * 1024 * 64; // 1GB
+    let total_bytes = 1024 * 1024 * 16;
     let chunk_size = 1; // 4KB chunks
 
     let mut ring_producer = ring.clone();
     let ring_consumer = ring.clone();
 
-    println!("Starting benchmark: 1GB transfer, 1MB ring buffer, 4KB chunks");
+    println!(
+        "Starting benchmark: {}GB transfer, 1MB ring buffer, {}B chunks",
+        total_bytes / 1024 / 1024,
+        chunk_size * size_of::<u64>()
+    );
     let start = Instant::now();
 
+    let producer_affinity = core_affinity::get_core_ids().unwrap()[12];
+    let consumer_affinity = core_affinity::get_core_ids().unwrap()[14];
+
     let producer = thread::spawn(move || {
+        core_affinity::set_for_current(producer_affinity);
         let data = vec![1u8; chunk_size];
         let mut written = 0;
         while written < total_bytes {
@@ -47,6 +55,7 @@ fn main() {
     });
 
     let consumer = thread::spawn(move || {
+        core_affinity::set_for_current(consumer_affinity);
         let mut data = vec![0u8; chunk_size];
         let mut read = 0;
         while read < total_bytes {
