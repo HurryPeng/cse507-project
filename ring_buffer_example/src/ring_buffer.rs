@@ -222,9 +222,9 @@ impl RingBuf {
     pub fn consume(&self, count: usize) -> bool {
         //2
         //TODO: Revisit memory order to loose constraints
-        let head = self.head.load(Ordering::SeqCst);
+        let head = self.head.load(Ordering::Relaxed);
         self.head
-            .store(head.wrapping_add(count as u32), Ordering::SeqCst);
+            .store(head.wrapping_add(count as u32), Ordering::Release);
 
         let tail = self.tail.load(Ordering::Acquire);
         let available = tail.wrapping_sub(head) as usize;
@@ -325,9 +325,9 @@ impl RingBuf {
 
     pub fn produce(&self, count: usize) -> bool {
         //TODO: Revisit memory order to loose constraints
-        let tail = self.tail.load(Ordering::SeqCst);
+        let tail = self.tail.load(Ordering::Relaxed);
         self.tail
-            .store(tail.wrapping_add(count as u32), Ordering::SeqCst);
+            .store(tail.wrapping_add(count as u32), Ordering::Release);
 
         let head = self.head.load(Ordering::Acquire);
         let available = tail.wrapping_sub(head) as usize;
