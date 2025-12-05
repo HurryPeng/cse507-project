@@ -2,7 +2,7 @@
 
 (require "model.rkt" "ring_buffer.rkt")
 
-(define (verify-ring-buffer make-trace read-count semantics expected-pairs)
+(define (verify-ring-buffer make-trace read-count expected-pairs)
   ;; Clear state
   (current-bitwidth #f) ;; Use infinite precision for integers
   
@@ -13,15 +13,15 @@
       rv))
   
   (define trace (make-trace read-vals))
-  ;; Select program order relation based on semantics
-  (define ppo-fn (if (equal? semantics 'sc) ppo-sc ppo-relaxed))
+  ;; Program order relation (relaxed/local only)
+  (define ppo-fn ppo-relaxed)
   
   ;; Initial writes
   (define init-writes 
-    (list (mk-write -1 -1 DATA0 0)
-          (mk-write -2 -1 DATA1 0)
-          (mk-write -3 -1 TAIL 0)
-          (mk-write -4 -1 HEAD 0)))
+    (list (mk-write -1 -1 DATA0 0 'sc)
+          (mk-write -2 -1 DATA1 0 'sc)
+          (mk-write -3 -1 TAIL 0 'sc)
+          (mk-write -4 -1 HEAD 0 'sc)))
           
   (define full-trace (append init-writes trace))
   
@@ -100,17 +100,41 @@
       (implies (rf-rel w r)
                (< (get-rank w) (get-rank r)))))
 
-  ;; Latest-visible constraint: SC enforces latest, Relaxed allows older writes.
+  ;; Latest-visible constraint for SC reads: if read is SC, it must take the latest
+  ;; co-preceding write before the read's rank.
   (define latest-visible-constraint
-    (if (equal? semantics 'sc)
-        (for/and ([r reads] [w writes])
-          (implies (rf-rel w r)
-                   (for/and ([w2 writes])
-                     (implies (and (equal? (event-addr w2) (event-addr w))
-                                   (co-rel w w2)
-                                   (< (get-rank w2) (get-rank r)))
-                              #f))))
-        #t))
+    (for/and ([r reads] [w writes])
+      (implies (and (rf-rel w r)
+                    (equal? (event-mem-order r) 'sc))
+               (for/and ([w2 writes])
+                 (implies (and (equal? (event-addr w2) (event-addr w))
+                               (co-rel w w2)
+                               (< (get-rank w2) (get-rank r)))
+                          #f)))))
+
+  ;; Release-acquire: if r_acq reads-from w_rel (release), then everything before w_rel
+  ;; in that producer thread happens before everything after r_acq in the consumer thread.
+  (define release-acquire-constraint
+    (for/and ([r_acq reads] [w_rel writes])
+      (implies (and (rf-rel w_rel r_acq)
+                    (equal? (event-mem-order w_rel) 'rel)
+                    (equal? (event-mem-order r_acq) 'acq))
+               (for/and ([e_pre full-trace])
+                 (implies (and (equal? (event-thread-id e_pre) (event-thread-id w_rel))
+                               (po full-trace e_pre w_rel))
+                          (for/and ([e_post full-trace])
+                            (implies (and (equal? (event-thread-id e_post) (event-thread-id r_acq))
+                                          (po full-trace r_acq e_post))
+                                     (< (get-rank e_pre) (get-rank e_post)))))))))
+
+  ;; SC operations are totally ordered (for simplicity, via ranks).
+  (define sc-total-order
+    (for/and ([e1 full-trace] [e2 full-trace])
+      (implies (and (not (equal? e1 e2))
+                    (equal? (event-mem-order e1) 'sc)
+                    (equal? (event-mem-order e2) 'sc))
+               (or (< (get-rank e1) (get-rank e2))
+                   (< (get-rank e2) (get-rank e1))))))
 
   ;; Tie tail reads to corresponding data writes when tail is observed (demo-oriented).
   (define r-tail1 (list-ref reads 0))
@@ -143,10 +167,14 @@
               (and w-tail1 (rf-rel w-tail1 r-tail1)))
      (implies (>= (list-ref read-vals 2) 2)
               (and w-tail2 (rf-rel w-tail2 r-tail2)))
-     ;; If tail is read from tail write, corresponding data should match expected value.
-     (implies (and w-tail1 (rf-rel w-tail1 r-tail1) w-data0)
+     ;; If tail is read from tail write with strong sync (SC or rel/acq), data matches.
+     (implies (and w-tail1 (rf-rel w-tail1 r-tail1) w-data0
+                   (member (event-mem-order w-tail1) '(sc rel))
+                   (member (event-mem-order r-tail1) '(sc acq)))
               (equal? (list-ref read-vals 1) 1))
-     (implies (and w-tail2 (rf-rel w-tail2 r-tail2) w-data1)
+     (implies (and w-tail2 (rf-rel w-tail2 r-tail2) w-data1
+                   (member (event-mem-order w-tail2) '(sc rel))
+                   (member (event-mem-order r-tail2) '(sc acq)))
               (equal? (list-ref read-vals 3) 2))))
 
   (define acyclic-constraints
@@ -162,6 +190,8 @@
                                  acyclic-constraints
                                  rf-before-read
                                  latest-visible-constraint
+                                 release-acquire-constraint
+                                 sc-total-order
                                  tail-data-constraint))
 
   ;; Debug: check baseline consistency without the violation predicate.
@@ -213,29 +243,28 @@
         (printf "latest-visible? ~a\n" (evaluate latest-visible-constraint sol))
         sol)))
 
-(define (run-case semantics)
-  (printf "\n=== Semantics: ~a ===\n" semantics)
+(define (run-case)
   (printf "Verifying P1 (Correct)...\n")
-  (define sol-p1 (verify-ring-buffer make-trace-p1 4 semantics '((1 . 1) (2 . 2))))
+  (define sol-p1 (verify-ring-buffer make-trace-p1 4 '((1 . 1) (2 . 2))))
   (if (unsat? sol-p1)
       (printf "P1 Verified! No violation found.\n")
       (begin
         (printf "P1 Failed! Counterexample found.\n")
         (print sol-p1)))
   (printf "\nVerifying P2 (Incorrect)...\n")
-  (define sol-p2a (verify-ring-buffer make-trace-p2a 4 semantics '((1 . 1) (2 . 2))))
-  (if (unsat? sol-p2a)
-      (printf "P2a Verified! No violation found.\n")
+  (define sol-p2 (verify-ring-buffer make-trace-p2a 4 '((1 . 1) (2 . 2))))
+  (if (unsat? sol-p2)
+      (printf "P2 Verified! No violation found.\n")
       (begin
-        (printf "P2a Failed! Counterexample found.\n")
-        (print sol-p2a)))
-  (printf "\nVerifying P2b (Incorrect)...\n")
-  (define sol-p2b (verify-ring-buffer make-trace-p2b 4 semantics '((1 . 1) (2 . 2))))
-  (if (unsat? sol-p2b)
-      (printf "P2b Verified! No violation found.\n")
+        (printf "P2 Failed! Counterexample found.\n")
+        (print sol-p2)))
+  (printf "\nVerifying P3 (Incorrect)...\n")
+  (define sol-p3 (verify-ring-buffer make-trace-p2b 4 '((1 . 1) (2 . 2))))
+  (if (unsat? sol-p3)
+      (printf "P3 Verified! No violation found.\n")
       (begin
-        (printf "P2b Failed! Counterexample found.\n")
-        (print sol-p2b)))
+        (printf "P3 Failed! Counterexample found.\n")
+        (print sol-p3)))
   )
 
-(for ([sem '(sc relaxed)]) (run-case sem))
+(run-case)

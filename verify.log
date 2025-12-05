@@ -1,8 +1,6 @@
-
-=== Semantics: sc ===
 Verifying P1 (Correct)...
-Reads: (#(struct:event 5 2 read 2 rv$0) #(struct:event 6 2 read 0 rv$1) #(struct:event 8 2 read 2 rv$2) #(struct:event 9 2 read 1 rv$3))
-Writes: (#(struct:event -1 -1 write 0 0) #(struct:event -2 -1 write 1 0) #(struct:event -3 -1 write 2 0) #(struct:event -4 -1 write 3 0) #(struct:event 1 1 rdma-write 0 1) #(struct:event 2 1 rdma-write 2 1) #(struct:event 3 1 rdma-write 1 2) #(struct:event 4 1 rdma-write 2 2) #(struct:event 7 2 write 3 1) #(struct:event 10 2 write 3 0))
+Reads: (#(struct:event 5 2 read 2 rv$0 sc) #(struct:event 6 2 read 0 rv$1 sc) #(struct:event 8 2 read 2 rv$2 sc) #(struct:event 9 2 read 1 rv$3 sc))
+Writes: (#(struct:event -1 -1 write 0 0 sc) #(struct:event -2 -1 write 1 0 sc) #(struct:event -3 -1 write 2 0 sc) #(struct:event -4 -1 write 3 0 sc) #(struct:event 1 1 rdma-write 0 1 sc) #(struct:event 2 1 rdma-write 2 1 sc) #(struct:event 3 1 rdma-write 1 2 sc) #(struct:event 4 1 rdma-write 2 2 sc) #(struct:event 7 2 write 3 1 sc) #(struct:event 10 2 write 3 0 sc))
 Baseline constraints SAT? #t
 Base rf choices matrix: ((b$4 b$5 b$6 b$7 b$8 #f b$10 b$11 b$12 b$13) (b$14 b$15 b$16 b$17 b$18 b$19 b$20 b$21 b$22 b$23) (b$24 b$25 b$26 b$27 b$28 b$29 b$30 #f b$32 b$33) (#f #f #f #f #f #f #f #f #t #f))
 Base read values: (0 2 1 1)
@@ -10,47 +8,56 @@ Debug (fixed rf choices) skipped in generalized model.
 P1 Verified! No violation found.
 
 Verifying P2 (Incorrect)...
-Reads: (#(struct:event 5 2 read 2 rv$68) #(struct:event 6 2 read 0 rv$69) #(struct:event 8 2 read 2 rv$70) #(struct:event 9 2 read 1 rv$71))
-Writes: (#(struct:event -1 -1 write 0 0) #(struct:event -2 -1 write 1 0) #(struct:event -3 -1 write 2 0) #(struct:event -4 -1 write 3 0) #(struct:event 1 1 rdma-write 2 1) #(struct:event 2 1 rdma-write 0 1) #(struct:event 3 1 rdma-write 2 2) #(struct:event 4 1 rdma-write 1 2) #(struct:event 7 2 write 3 1) #(struct:event 10 2 write 3 0))
+Reads: (#(struct:event 5 2 read 2 rv$68 rlx) #(struct:event 6 2 read 0 rv$69 rlx) #(struct:event 8 2 read 2 rv$70 rlx) #(struct:event 9 2 read 1 rv$71 rlx))
+Writes: (#(struct:event -1 -1 write 0 0 sc) #(struct:event -2 -1 write 1 0 sc) #(struct:event -3 -1 write 2 0 sc) #(struct:event -4 -1 write 3 0 sc) #(struct:event 1 1 rdma-write 2 1 rlx) #(struct:event 2 1 rdma-write 0 1 rlx) #(struct:event 3 1 rdma-write 2 2 rlx) #(struct:event 4 1 rdma-write 1 2 rlx) #(struct:event 7 2 write 3 1 rlx) #(struct:event 10 2 write 3 0 rlx))
 Baseline constraints SAT? #t
-Base rf choices matrix: ((b$72 b$73 b$74 b$75 #f b$77 b$78 b$79 b$80 b$81) (b$82 b$83 b$84 b$85 b$86 b$87 b$88 b$89 b$90 b$91) (b$92 b$93 b$94 b$95 b$96 b$97 #f b$99 b$100 b$101) (#f #f #f #f #f #f #f #f #t #f))
+Base rf choices matrix: ((b$72 b$73 b$74 b$75 #f b$77 b$78 b$79 b$80 b$81) (b$82 b$83 b$84 b$85 b$86 b$87 b$88 b$89 b$90 b$91) (b$92 b$93 b$94 b$95 b$96 b$97 #f b$99 b$100 b$101) (#f #f #f #f #f #f #f #t #f #f))
+Base read values: (0 rv$69 1 2)
+Debug (fixed rf choices) skipped in generalized model.
+Model found. Ranks:
+Event -1 (Type write): Rank r$122
+Event -2 (Type write): Rank r$123
+Event -3 (Type write): Rank r$124
+Event -4 (Type write): Rank 0
+Event 1 (Type rdma-write): Rank r$126
+Event 2 (Type rdma-write): Rank r$127
+Event 3 (Type rdma-write): Rank r$128
+Event 4 (Type rdma-write): Rank r$129
+Event 5 (Type read): Rank r$130
+Event 6 (Type read): Rank r$131
+Event 7 (Type write): Rank r$132
+Event 8 (Type read): Rank r$133
+Event 9 (Type read): Rank 0
+Event 10 (Type write): Rank r$135
+Read values: (2 2 2 0)
+RF matrix (resolved): ((b$72 b$73 b$74 b$75 #t b$77 b$78 b$79 b$80 b$81) (b$82 b$83 b$84 b$85 b$86 b$87 b$88 b$89 b$90 b$91) (b$92 b$93 b$94 b$95 b$96 b$97 #t b$99 b$100 b$101) (#f #t #f #f #f #f #f #f #f #f))
+rf-constraints satisfied? #t
+latest-visible? #t
+P2 Failed! Counterexample found.
+(model
+ [rv$68 2]
+ [rv$69 2]
+ [rv$70 2]
+ [rv$71 0]
+ [b$76 #t]
+ [b$98 #t]
+ [b$102 #f]
+ [b$103 #t]
+ [b$104 #f]
+ [b$105 #f]
+ [b$106 #f]
+ [b$107 #f]
+ [b$108 #f]
+ [b$109 #f]
+ [b$110 #f]
+ [b$111 #f]
+ [r$125 0]
+ [r$134 0])
+Verifying P3 (Incorrect)...
+Reads: (#(struct:event 5 2 read 2 rv$136 acq) #(struct:event 6 2 read 0 rv$137 rlx) #(struct:event 8 2 read 2 rv$138 acq) #(struct:event 9 2 read 1 rv$139 rlx))
+Writes: (#(struct:event -1 -1 write 0 0 sc) #(struct:event -2 -1 write 1 0 sc) #(struct:event -3 -1 write 2 0 sc) #(struct:event -4 -1 write 3 0 sc) #(struct:event 1 1 rdma-write 0 1 rlx) #(struct:event 2 1 rdma-write 2 1 rel) #(struct:event 3 1 rdma-write 1 2 rlx) #(struct:event 4 1 rdma-write 2 2 rel) #(struct:event 7 2 write 3 1 rlx) #(struct:event 10 2 write 3 0 rlx))
+Baseline constraints SAT? #t
+Base rf choices matrix: ((b$140 b$141 b$142 b$143 b$144 #f b$146 b$147 b$148 b$149) (b$150 b$151 b$152 b$153 b$154 b$155 b$156 b$157 b$158 b$159) (b$160 b$161 b$162 b$163 b$164 b$165 b$166 #f b$168 b$169) (#f #f #f #f #f #t #f #f #f #f))
 Base read values: (0 2 1 1)
 Debug (fixed rf choices) skipped in generalized model.
-P2a Verified! No violation found.
-
-Verifying P2b (Incorrect)...
-Reads: (#(struct:event 5 2 read 2 rv$136) #(struct:event 6 2 read 0 rv$137) #(struct:event 8 2 read 2 rv$138) #(struct:event 9 2 read 1 rv$139))
-Writes: (#(struct:event -1 -1 write 0 0) #(struct:event -2 -1 write 1 0) #(struct:event -3 -1 write 2 0) #(struct:event -4 -1 write 3 0) #(struct:event 1 1 rdma-write 0 1) #(struct:event 2 1 rdma-write 2 1) #(struct:event 3 1 rdma-write 1 2) #(struct:event 4 1 rdma-write 2 2) #(struct:event 7 2 write 3 1) #(struct:event 10 2 write 3 0))
-Baseline constraints SAT? #t
-Base rf choices matrix: ((b$140 b$141 b$142 b$143 b$144 #f b$146 b$147 b$148 b$149) (b$150 b$151 b$152 b$153 b$154 b$155 b$156 b$157 b$158 b$159) (b$160 b$161 b$162 b$163 b$164 b$165 b$166 #f b$168 b$169) (#f #f #f #f #f #f #f #f #t #f))
-Base read values: (0 2 1 1)
-Debug (fixed rf choices) skipped in generalized model.
-P2b Verified! No violation found.
-
-=== Semantics: relaxed ===
-Verifying P1 (Correct)...
-Reads: (#(struct:event 5 2 read 2 rv$204) #(struct:event 6 2 read 0 rv$205) #(struct:event 8 2 read 2 rv$206) #(struct:event 9 2 read 1 rv$207))
-Writes: (#(struct:event -1 -1 write 0 0) #(struct:event -2 -1 write 1 0) #(struct:event -3 -1 write 2 0) #(struct:event -4 -1 write 3 0) #(struct:event 1 1 rdma-write 0 1) #(struct:event 2 1 rdma-write 2 1) #(struct:event 3 1 rdma-write 1 2) #(struct:event 4 1 rdma-write 2 2) #(struct:event 7 2 write 3 1) #(struct:event 10 2 write 3 0))
-Baseline constraints SAT? #t
-Base rf choices matrix: ((b$208 b$209 b$210 b$211 b$212 #f b$214 b$215 b$216 b$217) (b$218 b$219 b$220 b$221 b$222 b$223 b$224 b$225 b$226 b$227) (b$228 b$229 b$230 b$231 b$232 b$233 b$234 #f b$236 b$237) (#f #f #f #f #f #t #f #f #f #f))
-Base read values: (0 2 1 1)
-Debug (fixed rf choices) skipped in generalized model.
-P1 Verified! No violation found.
-
-Verifying P2 (Incorrect)...
-Reads: (#(struct:event 5 2 read 2 rv$272) #(struct:event 6 2 read 0 rv$273) #(struct:event 8 2 read 2 rv$274) #(struct:event 9 2 read 1 rv$275))
-Writes: (#(struct:event -1 -1 write 0 0) #(struct:event -2 -1 write 1 0) #(struct:event -3 -1 write 2 0) #(struct:event -4 -1 write 3 0) #(struct:event 1 1 rdma-write 2 1) #(struct:event 2 1 rdma-write 0 1) #(struct:event 3 1 rdma-write 2 2) #(struct:event 4 1 rdma-write 1 2) #(struct:event 7 2 write 3 1) #(struct:event 10 2 write 3 0))
-Baseline constraints SAT? #t
-Base rf choices matrix: ((b$276 b$277 b$278 b$279 #f b$281 b$282 b$283 b$284 b$285) (b$286 b$287 b$288 b$289 b$290 b$291 b$292 b$293 b$294 b$295) (b$296 b$297 b$298 b$299 b$300 b$301 #f b$303 b$304 b$305) (#f #f #f #f #f #t #f #f #f #f))
-Base read values: (0 2 1 1)
-Debug (fixed rf choices) skipped in generalized model.
-P2a Verified! No violation found.
-
-Verifying P2b (Incorrect)...
-Reads: (#(struct:event 5 2 read 2 rv$340) #(struct:event 6 2 read 0 rv$341) #(struct:event 8 2 read 2 rv$342) #(struct:event 9 2 read 1 rv$343))
-Writes: (#(struct:event -1 -1 write 0 0) #(struct:event -2 -1 write 1 0) #(struct:event -3 -1 write 2 0) #(struct:event -4 -1 write 3 0) #(struct:event 1 1 rdma-write 0 1) #(struct:event 2 1 rdma-write 2 1) #(struct:event 3 1 rdma-write 1 2) #(struct:event 4 1 rdma-write 2 2) #(struct:event 7 2 write 3 1) #(struct:event 10 2 write 3 0))
-Baseline constraints SAT? #t
-Base rf choices matrix: ((b$344 b$345 b$346 b$347 b$348 #f b$350 b$351 b$352 b$353) (b$354 b$355 b$356 b$357 b$358 b$359 b$360 b$361 b$362 b$363) (b$364 b$365 b$366 b$367 b$368 b$369 b$370 #f b$372 b$373) (#f #f #f #f #f #t #f #f #f #f))
-Base read values: (0 2 1 1)
-Debug (fixed rf choices) skipped in generalized model.
-P2b Verified! No violation found.
+P3 Verified! No violation found.

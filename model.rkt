@@ -5,14 +5,15 @@
 
 
 ;; Events
-(struct event (id thread-id type addr val) #:transparent)
+;; mem-order: 'sc | 'acq | 'rel | 'rlx
+(struct event (id thread-id type addr val mem-order) #:transparent)
 
 ;; Event types are just symbols: 'read, 'write
 
 
 ;; Helper to create events
-(define (mk-read id tid addr val) (event id tid 'read addr val))
-(define (mk-write id tid addr val) (event id tid 'write addr val))
+(define (mk-read id tid addr val mem-order) (event id tid 'read addr val mem-order))
+(define (mk-write id tid addr val mem-order) (event id tid 'write addr val mem-order))
 
 ;; Program Order (po)
 ;; e1 ->po e2 if same thread and e1.id < e2.id
@@ -26,7 +27,7 @@
 ;; We can represent it as a symbolic choice: for each read, choose one write.
 
 (define (get-writes trace addr)
-  (filter (lambda (e) (and (equal? (event-type e) 'write)
+  (filter (lambda (e) (and (member (event-type e) '(write rdma-write))
                            (equal? (event-addr e) addr)))
           trace))
 
@@ -64,7 +65,7 @@
 
 
 ;; Helper for RDMA
-(define (mk-rdma-write id tid addr val) (event id tid 'rdma-write addr val))
+(define (mk-rdma-write id tid addr val mem-order) (event id tid 'rdma-write addr val mem-order))
 
 ;; Relaxed Program Order (ppo)
 ;; Simplified: only orders local ops (reads/writes) within a thread.
